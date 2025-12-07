@@ -1,3 +1,10 @@
+
+If you like this project, help me through this morning's workout with a Coffee.
+
+<a href="https://www.buymeacoffee.com/tonytromp" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
+
+Thanks for your support :heart:
+
 # HevyConnect
 
 A Next.js application that converts Hevy CSV workout files to Garmin FIT format, allowing you to seamlessly sync your strength training workouts from Hevy to Garmin Connect.
