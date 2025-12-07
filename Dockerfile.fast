@@ -11,13 +11,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 
-# Copy package files
-COPY package.json package-lock.json* ./
+# Copy package files (package-lock.json will be generated in Docker)
+COPY package.json ./
 
 # Remove any existing node_modules and npm cache, then install fresh
-RUN rm -rf node_modules package-lock.json.lock 2>/dev/null || true && \
+# Generate package-lock.json during Docker build (not from local filesystem)
+RUN rm -rf node_modules 2>/dev/null || true && \
     npm cache clean --force && \
-    npm ci --no-audit --prefer-online
+    npm install --no-audit --prefer-online
 
 # Verify lightningcss is installed (Debian-based images have better binary support)
 RUN ls -la node_modules/lightningcss/node/ || echo "lightningcss check"
