@@ -2,6 +2,8 @@
 
 A Next.js application that converts Hevy CSV workout files to Garmin FIT format, allowing you to seamlessly sync your strength training workouts from Hevy to Garmin Connect.
 
+By default all exercises are mapped between Hevy and Garmin FIT file format. Checkout the file: `public/exercise-lookup-table.json`. Garmin does not allow free-format text as Exercise names, so they need to be mapped using this file. If the mapping doesn't exist, it will try and use Fuzzy matching to map the right exercise, but best to set the mapping in the file.
+
 ## Features
 
 - Drag & drop CSV file upload
@@ -12,6 +14,11 @@ A Next.js application that converts Hevy CSV workout files to Garmin FIT format,
 - View and inspect FIT file contents
 - Automatic exercise name matching to Garmin exercise database
 - Calorie estimation based on workout duration and volume
+
+## Known Issues / Unresolved
+
+- Hevy doesn't export the time per exercise (and rest), so we put standard 1 minute timer. You can adjust later in Garmin Connect if needed.
+- If the Exercise is wrongly named: check/edit the Lookup Table JSON location in `public/exercise-lookup-table.json`. This file is the mapping between exercises in Garmin and Hevy (Garmin doesn't allow free-form text, so all exercises are mapped).
 
 ## Complete Workflow Guide
 
@@ -40,6 +47,8 @@ A Next.js application that converts Hevy CSV workout files to Garmin FIT format,
    - Navigate to `http://localhost:3000` (if running locally)
    - Or use the deployed version of HevyConnect
 
+   ![HevyConnect Main Page](img/main.png)
+
 2. **Upload Your CSV File**
    - **Option A:** Drag and drop your Hevy CSV file onto the upload area
    - **Option B:** Click on the upload area to open a file selector, then choose your CSV file
@@ -57,6 +66,13 @@ A Next.js application that converts Hevy CSV workout files to Garmin FIT format,
    - The file will be named the same as your CSV file but with a `.fit` extension
    - Example: `workouts.csv` → `workouts.fit`
 
+6. **Optional: View FIT File Contents**
+   - Click the **"View FIT Files"** button in the top right corner
+   - Upload your generated FIT file to inspect its contents
+   - Verify that all data looks correct before importing to Garmin Connect
+
+   ![FIT File Viewer](img/viewer.png)
+
 ### Step 3: Upload to Garmin Connect
 
 1. **Log in to Garmin Connect**
@@ -67,11 +83,15 @@ A Next.js application that converts Hevy CSV workout files to Garmin FIT format,
    - Click on the **"Activities"** tab in the top navigation
    - Click on **"Import Data"** (usually found in the left sidebar or under a menu)
 
+   ![Garmin Connect Import - Step 1](img/garmin_import_1.png)
+
 3. **Upload the FIT File**
    - Click **"Browse"** or **"Choose File"**
    - Navigate to where you downloaded the FIT file (usually your Downloads folder)
    - Select the `.fit` file (e.g., `workouts.fit`)
    - Click **"Upload"** or **"Import"**
+
+   ![Garmin Connect Import - Step 2](img/garmin_import_2.png)
 
 4. **Verify Your Workout**
    - After upload, Garmin Connect will process the file
@@ -82,6 +102,8 @@ A Next.js application that converts Hevy CSV workout files to Garmin FIT format,
      - Sport type: Strength Training
      - Exercise details (if sets were included)
      - Estimated calories burned
+
+   ![Garmin Connect Import - Step 3](img/garmin_import_3.png)
 
 5. **Review and Edit (Optional)**
    - Click on the imported activity to view details
@@ -103,6 +125,7 @@ A Next.js application that converts Hevy CSV workout files to Garmin FIT format,
 - If exercises appear with incorrect names in Garmin Connect, the converter uses fuzzy matching to find the closest Garmin exercise
 - Some exercises may default to "Total Body" category if no close match is found
 - You can manually edit exercise names in Garmin Connect after import
+- To fix exercise mappings permanently, edit `public/exercise-lookup-table.json` and add the correct mapping
 
 ## Development
 
@@ -161,14 +184,13 @@ The application will be available at `http://localhost:3000`
 
 - **First build:** 2-5 minutes (downloads dependencies)
 - **Subsequent builds:** 30-90 seconds (with BuildKit cache)
-- **If builds take >10 minutes:** See [DOCKER-TROUBLESHOOTING.md](DOCKER-TROUBLESHOOTING.md)
 
 **Important:** Make sure Docker has sufficient resources allocated (at least 4GB RAM, 4 CPU cores). Check Docker Desktop → Settings → Resources.
 
 ### Build Docker Image
 
 ```bash
-docker build -t hevyconnect .
+docker build -t hevyconnect -f Dockerfile.fast .
 ```
 
 ### Run Docker Container
@@ -184,6 +206,7 @@ docker run -p 3000:3000 hevyconnect
 - `lib/` - Core conversion logic (CSV parsing, FIT conversion, exercise matching)
 - `types/` - TypeScript type definitions
 - `public/` - Static files (exercise lookup table)
+- `img/` - Documentation images
 
 ## How It Works
 
@@ -199,9 +222,11 @@ docker run -p 3000:3000 hevyconnect
    - Exercise name matching to Garmin exercise database
    - Calorie estimation based on workout duration and volume
 
-4. **Exercise Matching**: The converter uses a lookup table and fuzzy matching to map Hevy exercise names to Garmin exercise categories and IDs.
+4. **Exercise Matching**: The converter uses a lookup table (`public/exercise-lookup-table.json`) and fuzzy matching to map Hevy exercise names to Garmin exercise categories and IDs. If an exact match is found in the lookup table, it uses that. Otherwise, it falls back to fuzzy matching against Garmin exercise names.
 
-5. **Calorie Calculation**: Calories are estimated using a formula that considers both workout duration and total volume (weight × reps).
+5. **Calorie Calculation**: Calories are estimated using a formula that considers both workout duration and total volume (weight × reps):
+   - Base: 5.5 calories per minute
+   - Volume bonus: 0.1 calories per kg-rep
 
 ## License
 
