@@ -14,7 +14,6 @@
   "license": "ISC",
   "dependencies": {
     "@garmin/fitsdk": "^21.178.0",
-    "@tailwindcss/postcss": "^4.1.17",
     "@types/node": "^24.10.1",
     "@types/papaparse": "^5.5.1",
     "@types/react": "^19.2.7",
@@ -26,7 +25,6 @@
     "postcss": "^8.5.6",
     "react": "^19.2.1",
     "react-dom": "^19.2.1",
-    "tailwindcss": "^4.1.17",
     "typescript": "^5.9.3"
   }
 }
