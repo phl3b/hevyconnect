@@ -35,7 +35,7 @@ export default function Home() {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = file.name.replace('.csv', '.fit');
+      a.download = `garmin-${file.name.replace('.csv', '.fit')}`;
       document.body.appendChild(a);
       a.click();
       a.remove();

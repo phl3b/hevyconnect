@@ -11,38 +11,31 @@ function dateToFitTimestamp(date: Date): number {
 }
 
 /**
- * Estimate calories burned for a strength training workout
- * Uses a simple formula: approximately 5-6 calories per minute for moderate intensity
- * Can be adjusted based on workout intensity, number of sets, and total volume
+ * Estimate calories burned for a strength training workout using MET method
+ * MET formula: Calories = MET × weight(kg) × duration(hours)
+ * 
+ * @param durationSeconds - Workout duration in seconds
+ * @param weightKg - User's body weight in kilograms
+ * @param metValue - Metabolic Equivalent of Task value (typically 3.0-6.0 for strength training)
+ * @returns Estimated calories burned (rounded to nearest integer)
  */
-function estimateCalories(activity: HevyActivity, durationSeconds: number): number {
-  // Base estimation: 5.5 calories per minute for moderate intensity strength training
-  const caloriesPerMinute = 5.5;
-  const durationMinutes = durationSeconds / 60;
-  
-  // Base calories from duration
-  let estimatedCalories = durationMinutes * caloriesPerMinute;
-  
-  // Adjust based on total volume (weight * reps) - more volume = more calories
-  let totalVolume = 0;
-  for (const exercise of activity.exercises) {
-    for (const set of exercise.sets) {
-      if (set.weight_kg && set.reps) {
-        totalVolume += set.weight_kg * set.reps;
-      }
-    }
-  }
-  
-  // Add bonus calories based on volume (approximately 0.1 calories per kg-rep)
-  // This accounts for the additional energy expenditure from lifting heavier weights
-  const volumeBonus = totalVolume * 0.1;
-  estimatedCalories += volumeBonus;
+function estimateCaloriesMET(durationSeconds: number, weightKg: number, metValue: number): number {
+  // MET formula: Calories = MET × weight(kg) × duration(hours)
+  const durationHours = durationSeconds / 3600;
+  const calories = metValue * weightKg * durationHours;
   
   // Round to nearest integer (calories are whole numbers)
-  return Math.round(estimatedCalories);
+  return Math.round(calories);
 }
 
-export async function convertActivityToFIT(activity: HevyActivity, includeSets: boolean = true): Promise<Uint8Array> {
+export async function convertActivityToFIT(
+  activity: HevyActivity,
+  includeSets: boolean = true,
+  weightKg: number = 70,
+  metValue: number = 5.0,
+  restTimeSeconds: number = 60,
+  exerciseTimeSeconds: number = 60
+): Promise<Uint8Array> {
   const encoder = new Encoder();
   
   // Parse timestamps
@@ -55,8 +48,8 @@ export async function convertActivityToFIT(activity: HevyActivity, includeSets: 
   // So we store duration in seconds (not milliseconds) so Garmin Connect reads it correctly
   const durationSeconds = Math.round((endTime.getTime() - startTime.getTime()) / 1000); // Duration in seconds
   
-  // Estimate calories burned for the workout
-  const totalCalories = estimateCalories(activity, durationSeconds);
+  // Estimate calories burned for the workout using MET method
+  const totalCalories = estimateCaloriesMET(durationSeconds, weightKg, metValue);
 
   const startTimeFit = dateToFitTimestamp(startTime);
   const endTimeFit = dateToFitTimestamp(endTime);
@@ -171,7 +164,7 @@ export async function convertActivityToFIT(activity: HevyActivity, includeSets: 
       
       // Only create workout step if we haven't seen this exercise before
       if (!exerciseToWktStepIndex.has(exercise.exercise_title)) {
-        // Workout step message (mesgNum 27)
+        // Workout step message (mesgNum 27) for exercise
         encoder.writeMesg({
           mesgNum: 27, // workoutStep
           messageIndex: wktStepIndex,
@@ -196,7 +189,8 @@ export async function convertActivityToFIT(activity: HevyActivity, includeSets: 
 
     const allSets: SetWithTimestamp[] = [];
     let currentTimestamp = startTime.getTime();
-    const REST_TIME_MS = 60 * 1000; // 1 minute rest between sets
+    const EXERCISE_TIME_MS = exerciseTimeSeconds * 1000; // Exercise time in milliseconds
+    const REST_TIME_MS = restTimeSeconds * 1000; // Rest time between sets in milliseconds
 
     for (let exerciseIdx = 0; exerciseIdx < activity.exercises.length; exerciseIdx++) {
       const exercise = activity.exercises[exerciseIdx];
@@ -215,6 +209,7 @@ export async function convertActivityToFIT(activity: HevyActivity, includeSets: 
           currentTimestamp += REST_TIME_MS;
         }
 
+        // Active set timestamp
         const setTimestamp = new Date(currentTimestamp);
         const setTimestampFit = dateToFitTimestamp(setTimestamp);
 
@@ -228,37 +223,26 @@ export async function convertActivityToFIT(activity: HevyActivity, includeSets: 
           wktStepIndex: exerciseWktStepIndex, // Reference to workout step
         });
 
-        // Move timestamp forward for next set (set duration is 0, so just move to next)
-        // The rest time will be added before the next set
+        // Move timestamp forward by exercise time for next set
+        currentTimestamp += EXERCISE_TIME_MS;
       }
     }
 
-    // Write sets with calculated durations
+    // Write sets with exercise time and rest time
     for (let i = 0; i < allSets.length; i++) {
       const setWithTs = allSets[i];
       const { set, exerciseTitle, timestampFit, wktStepIndex, timestamp } = setWithTs;
-
-      // Calculate duration: time from current set start to next set start
-      // For the last set, duration is until the end of the workout
-      // FIT duration field has scale 1000, but Garmin Connect reads it without applying scale
-      // So we store duration in seconds (not milliseconds)
-      let durationSeconds = 0;
-      if (i < allSets.length - 1) {
-        // Duration is the time until the next set starts
-        const nextSetTimestamp = allSets[i + 1].timestamp;
-        const durationMs = nextSetTimestamp.getTime() - timestamp.getTime();
-        durationSeconds = Math.round(durationMs / 1000); // Convert to seconds
-      } else {
-        // Last set: duration until end of workout
-        const durationMs = endTime.getTime() - timestamp.getTime();
-        durationSeconds = Math.round(durationMs / 1000); // Convert to seconds
-      }
 
       // Determine set type: 0 = rest, 1 = active
       let setType = 0; // rest
       if (set.set_type === 'normal' || set.set_type === 'warmup') {
         setType = 1; // active
       }
+
+      // Active sets use exerciseTimeSeconds for duration
+      // Rest time is handled through timestamp gaps (elapsed time minus timer time)
+      // Garmin Connect will derive rest time from the time between sets
+      const durationSeconds = exerciseTimeSeconds; // Exercise time in seconds
 
       // Convert weight: FIT weight field has scale 16
       // According to FIT spec, we should store weight_kg * 16
@@ -275,11 +259,11 @@ export async function convertActivityToFIT(activity: HevyActivity, includeSets: 
         confidence: 0,
       };
 
-      // Set message (mesgNum 225)
+      // Set message (mesgNum 225) - Active set with exercise time
       encoder.writeMesg({
         mesgNum: 225, // set
         timestamp: timestampFit,
-        duration: durationSeconds, // Duration in seconds (Garmin Connect reads without applying scale)
+        duration: durationSeconds, // Exercise time in seconds for active sets
         repetitions: set.reps || 0,
         weight: weightFit,
         weightDisplayUnit: 1, // 1 = kilogram (fitBaseUnit.kilogram)
@@ -293,6 +277,31 @@ export async function convertActivityToFIT(activity: HevyActivity, includeSets: 
       });
 
       setIndex++;
+
+      // Create rest event after active set (except for the last set)
+      // Rest intervals use event type "rest" (value 1) with duration specified in seconds
+      if (setType === 1 && i < allSets.length - 1) {
+        const restStartTimestamp = timestamp.getTime() + EXERCISE_TIME_MS;
+        const restStartTimestampFit = dateToFitTimestamp(new Date(restStartTimestamp));
+        const restEndTimestamp = restStartTimestamp + REST_TIME_MS;
+        const restEndTimestampFit = dateToFitTimestamp(new Date(restEndTimestamp));
+
+        // Event message (mesgNum 21) - rest start
+        encoder.writeMesg({
+          mesgNum: 21, // event
+          timestamp: restStartTimestampFit,
+          event: 1, // event.rest (rest interval, value 1)
+          eventType: 0, // eventType.start (start of rest)
+        });
+
+        // Event message (mesgNum 21) - rest stop
+        encoder.writeMesg({
+          mesgNum: 21, // event
+          timestamp: restEndTimestampFit,
+          event: 1, // event.rest (rest interval, value 1)
+          eventType: 1, // eventType.stop (end of rest)
+        });
+      }
     }
   }
 

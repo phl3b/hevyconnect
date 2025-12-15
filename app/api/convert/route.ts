@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { parseHevyCSV } from '@/lib/csvParser';
 import { extractLastActivity } from '@/lib/workoutProcessor';
 import { convertActivityToFIT } from '@/lib/fitConverter';
+import { loadConfig, convertWeightToKg } from '@/lib/configLoader';
 
 export async function POST(request: NextRequest) {
   try {
@@ -24,6 +25,20 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    // Load configuration
+    const config = loadConfig();
+    
+    // Validate weight
+    if (config.weight <= 0) {
+      return NextResponse.json(
+        { error: 'Invalid weight in config.json. Weight must be a positive number.' },
+        { status: 500 }
+      );
+    }
+
+    // Convert weight to kilograms
+    const weightKg = convertWeightToKg(config.weight, config.unit);
 
     // Read file content
     const fileContent = await file.text();
@@ -48,14 +63,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Convert to FIT format
-    const fitData = await convertActivityToFIT(lastActivity, includeSets);
+    // Convert to FIT format with weight, MET value, rest time, and exercise time
+    const fitData = await convertActivityToFIT(lastActivity, includeSets, weightKg, config.metValue, config.restTime, config.exerciseTime);
 
     // Return FIT file (convert Uint8Array to Buffer for NextResponse)
+    const fitFilename = `garmin-${file.name.replace('.csv', '.fit')}`;
     return new NextResponse(Buffer.from(fitData), {
       headers: {
         'Content-Type': 'application/octet-stream',
-        'Content-Disposition': `attachment; filename="${file.name.replace('.csv', '.fit')}"`,
+        'Content-Disposition': `attachment; filename="${fitFilename}"`,
       },
     });
   } catch (error) {
